@@ -10,7 +10,7 @@ const cookieParser = require('cookie-parser');
 
 const cors  = require('cors');
 const corsOptions = {
-	origin :["http://localhost:5173"],
+	origin :["http://localhost:5173" , "https://logbookkkn309.netlify.app"],
 	methods: ['GET','POST','PATCH','DELETE'],            // Allow only GET and POST methods
     allowedHeaders: ['Content-Type','Authorization'], // Allow specific headers
     credentials: true   
