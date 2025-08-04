@@ -38,7 +38,7 @@ exports.getArticles = async(req,res) => {
 	try
 	{
 		const client = await pool.connect();
-		const article_data = await client.query('SELECT DISTINCT a.log_id , a.title , a.slug , p_a.image_url FROM logbooks as a JOIN  logbook_images as p_a ON a.log_id  = p_a.log_id');
+		const article_data = await client.query('SELECT DISTINCT a.log_id , a.title , a.slug , p_a.image_url FROM logbooks as a DESCENT JOIN  logbook_images as p_a ON a.log_id  = p_a.log_id order by a.log_id ASC');
 		res.json(article_data.rows);
 		client.release();
 	}
