@@ -38,8 +38,9 @@ exports.getArticles = async(req,res) => {
 	try
 	{
 		const client = await pool.connect();
-		const article_data = await client.query('SELECT DISTINCT a.log_id , a.title , a.slug , p_a.image_url FROM logbooks as a JOIN  logbook_images as p_a ON a.log_id  = p_a.log_id order by a.log_id ASC');
-		res.json(article_data.rows);
+		const article_data = await client.query('SELECT DISTINCT a.log_id , a.title , a.slug  FROM logbooks as a  ORDER BY a.log_id ASC');
+		const article_photo_data = await client.query('SELECT p_a.image_url from logbook_images as p_a ORDER BY p_a.logbook_images_id ASC')
+		res.status(200).json({ "article_data" : article_data.rows , "article_image_data" : article_photo_data.rows});
 		client.release();
 	}
 	
@@ -95,14 +96,21 @@ exports.updateArticle = async(req,res,next) => {
 	{
 		const oldslug = req.params.slug;
 		
-		const {title , content } = req.body;
+		const {title , content , images_to_delete} = req.body;
+		
+		console.log(req.body);
+	
+		const image_files = req.files?.['images'] || [];
+		
+		const imageToDelete = JSON.parse(images_to_delete) || [];
+		
+		console.log(imageToDelete);
+		
 		
 		
 		await client.query("BEGIN");
 
 		
-		const photo_url = req.file && req.file.path ? req.file.path : null;
-		const photo_fileID = req.file && req.file.fileid ? req.file.fileid : null;
 		const newslug  = generate_slug(title);
 		
 		
@@ -113,37 +121,55 @@ exports.updateArticle = async(req,res,next) => {
 
 			const logID_request = await client.query('SELECT log_id FROM logbooks WHERE slug = $1' , [newslug]);
 			const logID = logID_request.rows[0].log_id;
-
-			if (photo_url && photo_fileID) {
-				const oldPhoto = await client.query(
+	
+			if (imageToDelete.length) {
+				
+				const photoToDelete = await client.query(
 					`SELECT m.image_fileid 
 					 FROM logbook_images AS m
 					 JOIN logbooks AS l ON m.log_id = l.log_id 
 					 WHERE l.log_id = $1`,
 					[logID]
 				);
+				
+				console.log(photoToDelete.rows);
 
-				if (oldPhoto.rowCount) {
-					await deleteImage(oldPhoto.rows[0].image_fileid); // Delete old image
-					await client.query("DELETE FROM logbook_images WHERE log_id = $1", [logID]); // Remove old photo reference
+				if (photoToDelete.rowCount) {
+					
+					for(const item of photoToDelete.rows){ console.log("Image id to delete :",item.image_fileid); await deleteImage(item.image_fileid);}
+					
+					for (const item of imageToDelete){
+						console.log("Image path to delete :", item);
+						await client.query("DELETE FROM logbook_images WHERE log_id = $1 AND image_url = $2", [logID , item]);
+					};	
+				}
+				
+
+
+
+			}
+			
+			if (image_files.length){
+				for (const item of image_files){
+					await client.query(
+						`INSERT INTO logbook_images (image_url, log_id, image_fileid) 
+						 VALUES ($1, $2, $3)`,
+						[item.path, logID, item.fileid]
+					);						
 				}
 
-				// Insert new photo
-				await client.query(
-					`INSERT INTO logbook_images (image_url, log_id, image_fileid) 
-					 VALUES ($1, $2, $3)`,
-					[photo_url, logID, photo_fileID]
-				);
 			}
 			
 					
 			await client.query("COMMIT");
+			console.log("Article successfully updated");
 			return res.status(200).json({message : "Article successfully updated"});
 			
 		}
 		
 		else if (result.rowCount === 0 ){
 			await client.query("COMMIT");
+			console.log("Article successfully updated , no changes applied");
 			return res.status(200).json({message : "Article successfully updated , no changes applied"});
 			
 		}
@@ -155,7 +181,7 @@ exports.updateArticle = async(req,res,next) => {
 	catch(e)
 	{
 		await client.query("ROLLBACK");
-		console.error("Error in updateArticle:", e);
+		console.error("Error in update Article:", e);
 		return res.status(500).json({error : "Internal server error while updating the article."})
 	}
 	
